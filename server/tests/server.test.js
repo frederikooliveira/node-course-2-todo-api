@@ -6,24 +6,12 @@ const { ObjectID } = require('mongodb');
 
 const { app } = require('../server');
 const { Todo } = require('../models/todo');
+const { User } = require('../models/user');
+const { todos, populateTodos, users, populateUsers } = require('./seed/seed');
 
+beforeEach(populateUsers);
+beforeEach(populateTodos);
 
-const todos = [{
-    _id: new ObjectID(),
-    text: "first text todo"
-}, {
-    _id: new ObjectID(),
-    complted: true,
-    compltedAt: 333,
-    text: "Second test todo"
-}
-]
-
-beforeEach((done) => {
-    Todo.remove({}).then(() => {
-        return Todo.insertMany(todos);
-    }).then(() => { done() });
-})
 
 describe('POST /todos', () => {
     it('sould create a new todo', (done) => {
@@ -150,9 +138,9 @@ describe('DELETE /todos/:id', () => {
 
 describe('PATCH /todos/:id', () => {
     it('should update the todo', (done) => {
-        var hexId = todos[0]._id.toHexString();        
+        var hexId = todos[0]._id.toHexString();
         var text = 'it should be the new test';
-       
+
         request(app)
             .patch(`/todos/${hexId}`)
             .expect(200)
@@ -163,12 +151,12 @@ describe('PATCH /todos/:id', () => {
             .expect((res) => {
                 expect(res.body.todo.text).toBe(text);
                 expect(res.body.todo.completed).toBe(true);
-                expect(res.body.todo.completedAt).toBeA('number');                
+                expect(res.body.todo.completedAt).toBeA('number');
             })
             .end(done);
     })
 
-    it('should compltedAt when todo is not complted', (done) => {
+    it('should compltedAt when todo is not completed', (done) => {
         var hexId = todos[1]._id.toHexString();
         var text = 'it should be the new test';
 
@@ -184,6 +172,81 @@ describe('PATCH /todos/:id', () => {
                 expect(res.body.todo.completed).toBe(false);
                 expect(res.body.todo.completedAt).toNotExist();
             })
+            .end(done);
+    })
+})
+
+describe('GET /users/me', () => {
+    it('should return user if authenticated', (done) => {
+        request(app)
+            .get('/users/me')
+            .set('x-auth', users[0].tokens[0].token)
+            .expect(200)
+            .expect((res) => {
+                expect(res.body._id).toBe(users[0]._id.toHexString());
+                expect(res.body.email).toBe(users[0].email);
+            })
+            .end(done);
+    })
+
+    it('should return 401 if not authenticated', (done) => {
+        request(app)
+            .get('/users/me')
+            .expect(401)
+            .expect((res) => {
+                expect(res.body).toEqual({});
+            })
+            .end(done);
+    })
+})
+
+describe('POST /users', () => {
+    it('should create a user', (done) => {
+        var email = 'example@example.com';
+        var password = '123mnb';
+
+        request(app)
+            .post('/users')
+            .send({ email, password })
+            .expect(200)
+            .expect((res) => {
+                expect(res.headers['x-auth']).toExist();
+                expect(res.body._id).toExist();
+                expect(res.body.email).toBe(email);
+            })
+            .end((err) => {
+                if (err) {
+                    return done(err);
+                }
+
+                User.findOne({ email }).then((user) => {
+                    expect(user).toExist();
+                    expect(user.password).toNotBe(password);
+                    done();
+                })
+            });
+
+    })
+
+    it('should return validation erros if request invalid', (done) => {
+        var email = 'exampleexample.com';
+        var password = '123mn';
+
+        request(app)
+            .post('/users')
+            .send({ email, password })
+            .expect(400)
+            .end(done);
+    })
+
+    it('should not create user if email in use', (done) => {
+        var email = users[0].email;
+        var password = '123mnb';
+
+        request(app)
+            .post('/users')
+            .send({ email, password })
+            .expect(400)
             .end(done);
     })
 })
